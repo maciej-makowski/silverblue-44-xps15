@@ -37,9 +37,12 @@ RUN rpm-ostree install \
         https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-44.noarch.rpm \
     && rpm-ostree cleanup -m
 
-# Add NVIDIA Container Toolkit upstream repo (Fedora 44 hasn't packaged it yet)
+# Add NVIDIA Container Toolkit upstream repo (Fedora 44 hasn't packaged it yet).
+# Strip the sslcacert directive — Silverblue uses /etc/pki/ca-trust/extracted/pem/...
+# instead of the path NVIDIA's .repo file points to, and the system default works fine.
 RUN curl -sL https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo \
-        -o /etc/yum.repos.d/nvidia-container-toolkit.repo
+        | sed '/^sslcacert=/d' \
+        > /etc/yum.repos.d/nvidia-container-toolkit.repo
 
 # Install layered packages (no akmods/akmod-nvidia — kmod comes from builder)
 RUN rpm-ostree install \
