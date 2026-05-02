@@ -13,7 +13,7 @@ toolbox create fedora-toolbox-43 || true
 echo ""
 echo "=== Installing toolbox packages ==="
 toolbox run --container fedora-toolbox-43 sudo dnf install -y \
-    $(cat "$SCRIPT_DIR/toolbox-fedora-43-packages.txt" | tr '\n' ' ')
+    $(cat "$SCRIPT_DIR/toolbox-fedora-44-packages.txt" | tr '\n' ' ')
 
 echo ""
 echo "=== Creating micropython-dev toolbox ==="
