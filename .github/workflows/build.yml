@@ -1,0 +1,70 @@
+name: Build Silverblue Image
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Prepare signing keys
+        run: |
+          mkdir -p /tmp/secrets
+          echo "${{ secrets.AKMODS_PUBKEY }}" | base64 -d > /tmp/secrets/signing_pubkey
+          echo "${{ secrets.AKMODS_PRIVKEY }}" | base64 -d > /tmp/secrets/signing_privkey
+
+      - name: Set date tag
+        id: tag
+        run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Build image
+        run: |
+          podman build \
+            --secret id=signing_pubkey,src=/tmp/secrets/signing_pubkey \
+            --secret id=signing_privkey,src=/tmp/secrets/signing_privkey \
+            -t ghcr.io/${{ github.repository }}:latest \
+            -t ghcr.io/${{ github.repository }}:${{ steps.tag.outputs.date }} \
+            .
+
+      - name: Push image
+        if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+        run: |
+          podman push ghcr.io/${{ github.repository }}:latest
+          podman push ghcr.io/${{ github.repository }}:${{ steps.tag.outputs.date }}
+
+      - name: Clean up old versions
+        if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+        run: |
+          PACKAGE="silverblue-44-xps15"
+          KEEP=4
+
+          # Get all version IDs sorted newest first
+          VERSIONS=$(gh api \
+            --paginate \
+            user/packages/container/$PACKAGE/versions \
+            --jq '.[].id')
+
+          # Skip the first $KEEP, delete the rest
+          echo "$VERSIONS" | tail -n +$((KEEP + 1)) | while read -r VERSION_ID; do
+            echo "Deleting version $VERSION_ID"
+            gh api --method DELETE \
+              user/packages/container/$PACKAGE/versions/$VERSION_ID
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clean up secrets
+        if: always()
+        run: rm -rf /tmp/secrets

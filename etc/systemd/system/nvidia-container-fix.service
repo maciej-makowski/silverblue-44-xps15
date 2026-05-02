@@ -1,0 +1,13 @@
+[Unit]
+Description=Fix NVidia Devices SELinux for Containers
+Requires=multi-user.target
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /usr/libexec/nvidia-container-fix.sh
+User=root
+Group=root
+
+[Install]
+WantedBy=default.target

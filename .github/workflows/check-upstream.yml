@@ -1,0 +1,55 @@
+name: Check Upstream Image
+
+on:
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Get upstream digest
+        id: upstream
+        run: |
+          DIGEST=$(skopeo inspect docker://quay.io/fedora/fedora-silverblue:44 --format '{{.Digest}}')
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Upstream digest: $DIGEST"
+
+      - name: Restore cached digest
+        id: cache
+        uses: actions/cache/restore@v5
+        with:
+          path: /tmp/upstream-digest.txt
+          key: upstream-digest-${{ steps.upstream.outputs.digest }}
+
+      - name: Check if rebuild needed
+        id: check
+        run: |
+          if [ "${{ steps.cache.outputs.cache-hit }}" == "true" ]; then
+            echo "Upstream unchanged, skipping rebuild"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Upstream changed, triggering rebuild"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Trigger build
+        if: steps.check.outputs.changed == 'true'
+        run: gh workflow run build.yml --repo ${{ github.repository }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Save digest to cache
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          echo "${{ steps.upstream.outputs.digest }}" > /tmp/upstream-digest.txt
+
+      - name: Update cache
+        if: steps.check.outputs.changed == 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: /tmp/upstream-digest.txt
+          key: upstream-digest-${{ steps.upstream.outputs.digest }}
