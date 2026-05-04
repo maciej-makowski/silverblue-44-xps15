@@ -63,6 +63,11 @@ RUN rpm-ostree install \
         zsh \
     && rpm-ostree cleanup -m
 
+RUN rpm-ostree override remove nano-default-editor \
+        --install vim-default-editor \
+        --install vim-enhanced \
+    && rpm-ostree cleanup -m
+
 # Install NVIDIA driver packages and the pre-built kmod from the builder.
 # We use dnf download + rpm because rpm-ostree install triggers the akmods
 # scriptlet which fails in a container. The kmod RPM satisfies the
