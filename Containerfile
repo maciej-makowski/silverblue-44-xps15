@@ -58,6 +58,8 @@ RUN rpm-ostree install \
         podlet \
         steam-devices \
         tmux \
+        vim-default-editor \
+        vim-enhanced \
         xcb-util-cursor \
         xcb-util-cursor-devel \
         zsh \
