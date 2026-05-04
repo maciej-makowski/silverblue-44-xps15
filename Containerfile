@@ -58,11 +58,14 @@ RUN rpm-ostree install \
         podlet \
         steam-devices \
         tmux \
-        vim-default-editor \
-        vim-enhanced \
         xcb-util-cursor \
         xcb-util-cursor-devel \
         zsh \
+    && rpm-ostree cleanup -m
+
+RUN rpm-ostree override remove nano-default-editor \
+        --install vim-default-editor \
+        --install vim-enhanced \
     && rpm-ostree cleanup -m
 
 # Install NVIDIA driver packages and the pre-built kmod from the builder.
