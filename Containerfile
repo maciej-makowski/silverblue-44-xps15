@@ -56,6 +56,7 @@ RUN rpm-ostree install \
         libavcodec-freeworld \
         nvidia-container-toolkit \
         podlet \
+        steam \
         steam-devices \
         tmux \
         xcb-util-cursor \
