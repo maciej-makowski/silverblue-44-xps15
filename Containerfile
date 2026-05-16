@@ -58,6 +58,8 @@ RUN rpm-ostree install \
         podlet \
         steam \
         steam-devices \
+        stow \
+        stow-doc \
         tmux \
         xcb-util-cursor \
         xcb-util-cursor-devel \
