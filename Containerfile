@@ -46,6 +46,8 @@ RUN curl -sL https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-cont
 
 # Install layered packages (no akmods/akmod-nvidia — kmod comes from builder)
 RUN rpm-ostree install \
+        age \
+        bats \
         gnome-shell-extension-appindicator \
         gnome-shell-extension-gsconnect \
         gnome-tweaks \
@@ -56,6 +58,9 @@ RUN rpm-ostree install \
         libavcodec-freeworld \
         nvidia-container-toolkit \
         podlet \
+        rclone \
+        restic \
+        shfmt \
         steam \
         steam-devices \
         stow \
