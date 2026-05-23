@@ -61,7 +61,6 @@ RUN rpm-ostree install \
         rclone \
         restic \
         shfmt \
-        steam \
         steam-devices \
         stow \
         stow-doc \
