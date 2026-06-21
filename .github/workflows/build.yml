@@ -13,6 +13,18 @@ jobs:
     permissions:
       contents: read
       packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: silverblue
+            containerfile: Containerfile
+            tag_prefix: ''
+            needs_signing_keys: true
+          - variant: bazzite
+            containerfile: Containerfile.bazzite
+            tag_prefix: 'bazzite-'
+            needs_signing_keys: false
     steps:
       - uses: actions/checkout@v6
 
@@ -20,6 +32,7 @@ jobs:
         run: echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Prepare signing keys
+        if: matrix.needs_signing_keys
         run: |
           mkdir -p /tmp/secrets
           echo "${{ secrets.AKMODS_PUBKEY }}" | base64 -d > /tmp/secrets/signing_pubkey
@@ -29,36 +42,56 @@ jobs:
         id: tag
         run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
 
-      - name: Build image
+      - name: Build image (with signing keys)
+        if: matrix.needs_signing_keys
         run: |
           podman build \
             --secret id=signing_pubkey,src=/tmp/secrets/signing_pubkey \
             --secret id=signing_privkey,src=/tmp/secrets/signing_privkey \
-            -t ghcr.io/${{ github.repository }}:latest \
-            -t ghcr.io/${{ github.repository }}:${{ steps.tag.outputs.date }} \
+            -f ${{ matrix.containerfile }} \
+            -t ghcr.io/${{ github.repository }}:${{ matrix.tag_prefix }}latest \
+            -t ghcr.io/${{ github.repository }}:${{ matrix.tag_prefix }}${{ steps.tag.outputs.date }} \
+            .
+
+      - name: Build image (no signing keys)
+        if: '!matrix.needs_signing_keys'
+        run: |
+          podman build \
+            -f ${{ matrix.containerfile }} \
+            -t ghcr.io/${{ github.repository }}:${{ matrix.tag_prefix }}latest \
+            -t ghcr.io/${{ github.repository }}:${{ matrix.tag_prefix }}${{ steps.tag.outputs.date }} \
             .
 
       - name: Push image
         if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
         run: |
-          podman push ghcr.io/${{ github.repository }}:latest
-          podman push ghcr.io/${{ github.repository }}:${{ steps.tag.outputs.date }}
+          podman push ghcr.io/${{ github.repository }}:${{ matrix.tag_prefix }}latest
+          podman push ghcr.io/${{ github.repository }}:${{ matrix.tag_prefix }}${{ steps.tag.outputs.date }}
 
-      - name: Clean up old versions
+      - name: Clean up old versions for this variant
         if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
         run: |
           PACKAGE="silverblue-44-xps15"
+          PREFIX='${{ matrix.tag_prefix }}'
           KEEP=4
 
-          # Get all version IDs sorted newest first
-          VERSIONS=$(gh api \
-            --paginate \
+          # Fetch all versions, filter to ones whose tags match this variant's prefix.
+          # An empty PREFIX is the silverblue variant: keep tags that DON'T start
+          # with "bazzite-". A non-empty PREFIX is bazzite: keep tags that DO start
+          # with the prefix.
+          ALL=$(gh api --paginate \
             user/packages/container/$PACKAGE/versions \
-            --jq '.[].id')
+            --jq '.[] | {id: .id, tags: .metadata.container.tags}')
 
-          # Skip the first $KEEP, delete the rest
+          if [ -z "$PREFIX" ]; then
+            VERSIONS=$(echo "$ALL" | jq -r 'select(.tags | length > 0) | select([.tags[] | startswith("bazzite-")] | any | not) | .id')
+          else
+            VERSIONS=$(echo "$ALL" | jq -r --arg p "$PREFIX" 'select(.tags | length > 0) | select([.tags[] | startswith($p)] | any) | .id')
+          fi
+
           echo "$VERSIONS" | tail -n +$((KEEP + 1)) | while read -r VERSION_ID; do
-            echo "Deleting version $VERSION_ID"
+            [ -z "$VERSION_ID" ] && continue
+            echo "Deleting version $VERSION_ID (variant: ${PREFIX:-silverblue})"
             gh api --method DELETE \
               user/packages/container/$PACKAGE/versions/$VERSION_ID
           done
@@ -66,5 +99,5 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Clean up secrets
-        if: always()
+        if: always() && matrix.needs_signing_keys
         run: rm -rf /tmp/secrets
