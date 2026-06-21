@@ -39,6 +39,7 @@ RUN rpm-ostree install --idempotent \
         shfmt \
         stow \
         tmux \
+        toolbox \
         xcb-util-cursor \
         xcb-util-cursor-devel \
         zsh \
