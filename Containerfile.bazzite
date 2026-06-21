@@ -1,0 +1,56 @@
+# Bazzite-based variant of silverblue-44-xps15.
+#
+# Built and published in parallel with `Containerfile` (the Silverblue variant)
+# from the same repository. Different image tag suffix:
+#   Silverblue: ghcr.io/maciej-makowski/silverblue-44-xps15:latest
+#   Bazzite:    ghcr.io/maciej-makowski/silverblue-44-xps15:bazzite-latest
+#
+# Key differences vs. the Silverblue Containerfile:
+#   - No multi-stage kmod build: Bazzite ships pre-built signed NVIDIA modules
+#     against its OGC kernel. No BuildKit secrets needed.
+#   - No RPM Fusion: Bazzite has its own codec stack via Bazzite/Terra COPRs;
+#     layering RPM Fusion conflicts with Bazzite's newer Mesa.
+#   - No nvidia-container-toolkit layering and no nvidia-container-fix /
+#     nvidia-cdi-generate systemd units: Bazzite handles container GPU passthrough
+#     via its own ujust-managed setup.
+#   - Drops the three RPM-Fusion-exclusive codec packages
+#     (gstreamer1-plugins-bad-freeworld, gstreamer1-plugins-ugly,
+#     libavcodec-freeworld). Bazzite provides equivalent coverage.
+#   - Drops steam-devices (already in Bazzite).
+#
+# Everything else (shell/dev tools, desktop polish, vim-as-default-editor
+# override) matches the Silverblue variant.
+
+FROM ghcr.io/ublue-os/bazzite-gnome-nvidia:stable
+
+# Layered packages — only Fedora-main / Cisco-hosted things Bazzite doesn't
+# already include. `--idempotent` so any future Bazzite-base overlap is a no-op.
+RUN rpm-ostree install --idempotent \
+        age \
+        bats \
+        gnome-shell-extension-appindicator \
+        gnome-shell-extension-gsconnect \
+        gnome-tweaks \
+        gstreamer-plugins-espeak \
+        gstreamer1-plugin-openh264 \
+        podlet \
+        rclone \
+        restic \
+        shfmt \
+        stow \
+        tmux \
+        xcb-util-cursor \
+        xcb-util-cursor-devel \
+        zsh \
+    && rpm-ostree cleanup -m
+
+# Replace nano-default-editor with vim — Bazzite still ships nano as the
+# system default editor, same as Fedora Silverblue.
+RUN rpm-ostree override remove nano-default-editor \
+        --install vim-default-editor \
+        --install vim-enhanced \
+    && rpm-ostree cleanup -m
+
+# Trigger ostree commit
+RUN rpm-ostree cleanup --repomd \
+    && ostree container commit
