@@ -2,18 +2,32 @@
 
 Custom Fedora Silverblue 44 OCI image for Dell XPS 15 with NVIDIA GPU support.
 
-## What's Included
+Sister to [`silverblue-44-z13`](https://github.com/maciej-makowski/silverblue-44-z13). Same patterns, different hardware target — NVIDIA dGPU, not AMD/ROCm.
+
+## Image variants
+
+Two images are built from this repo in parallel from the same source tree:
+
+| Variant | Base | Containerfile | Image tag |
+|---|---|---|---|
+| Silverblue (default) | `quay.io/fedora/fedora-silverblue:44` | `Containerfile` | `ghcr.io/maciej-makowski/silverblue-44-xps15:latest` |
+| Bazzite (test bench) | `ghcr.io/ublue-os/bazzite-gnome-nvidia:stable` | `Containerfile.bazzite` | `ghcr.io/maciej-makowski/silverblue-44-xps15:bazzite-latest` |
+
+The Bazzite variant exists to (a) evaluate whether Universal Blue's OGC kernel + Bazzite tuning replaces anything we work around on the Silverblue side, (b) pick up Bazzite's gaming stack (gamescope session, Game Mode, MangoHud) natively, and (c) skip the custom NVIDIA kmod build pipeline by piggybacking on Bazzite's pre-built signed modules.
+
+## What's Included (Silverblue variant)
 
 ### Layered Packages
 
-- **NVIDIA drivers:** xorg-x11-drv-nvidia, xorg-x11-drv-nvidia-cuda, nvidia-settings, libva-nvidia-driver, kmod-nvidia (pre-built)
+- **NVIDIA drivers:** xorg-x11-drv-nvidia, xorg-x11-drv-nvidia-cuda, nvidia-settings, libva-nvidia-driver, kmod-nvidia (pre-built in a multi-stage builder)
 - **NVIDIA container support:** nvidia-container-toolkit
 - **Multimedia codecs:** gstreamer1-plugin-openh264, gstreamer1-plugins-bad-freeworld, gstreamer1-plugins-ugly, libavcodec-freeworld, gstreamer-plugins-espeak
-- **Desktop:** gnome-shell-extension-gsconnect, xcb-util-cursor, xcb-util-cursor-devel
-- **Tools:** zsh, tmux, podlet
+- **Desktop:** gnome-shell-extension-appindicator, gnome-shell-extension-gsconnect, gnome-tweaks, xcb-util-cursor, xcb-util-cursor-devel
+- **Tools:** zsh, tmux, podlet, rclone, restic, stow, age, bats, shfmt
 - **Gaming:** steam-devices
+- **Editor:** vim-default-editor + vim-enhanced (replaces nano-default-editor)
 
-### NVIDIA Container GPU Passthrough
+### NVIDIA Container GPU Passthrough (Silverblue only)
 
 Custom systemd units are baked into the image:
 
@@ -21,9 +35,24 @@ Custom systemd units are baked into the image:
 - **nvidia-cdi-generate.service** — Regenerates the NVIDIA CDI spec (`/etc/cdi/nvidia.yaml`) on every boot
 - **nvidia-cdi-generate.timer** — Refreshes the CDI spec daily
 
+## What's Included (Bazzite variant)
+
+Same shell/dev/desktop/editor package set as the Silverblue variant, layered on top of `bazzite-gnome-nvidia:stable`.
+
+### Deliberately omitted vs. Silverblue
+
+- **Multi-stage NVIDIA kmod build** — Bazzite ships pre-built signed modules against its OGC kernel
+- **`xorg-x11-drv-nvidia*`, `nvidia-settings`, `libva-nvidia-driver`** — already in the Bazzite NVIDIA base
+- **`nvidia-container-toolkit` + custom NVIDIA repo** — already in Bazzite (managed via `ujust`)
+- **`nvidia-container-fix.service`, `nvidia-cdi-generate.service`, `nvidia-cdi-generate.timer`, `/usr/libexec/nvidia-container-fix.sh`** — Bazzite has equivalent container-GPU handling baked in
+- **RPM Fusion repos and the three RPM-Fusion-exclusive codec packages** (`gstreamer1-plugins-bad-freeworld`, `gstreamer1-plugins-ugly`, `libavcodec-freeworld`) — Bazzite provides equivalent codec coverage via its own COPRs; layering RPM Fusion conflicts with Bazzite's newer Mesa
+- **`steam-devices`** — already in Bazzite
+
 ## Build Architecture
 
-The Containerfile uses a **multi-stage build**:
+### Silverblue variant
+
+The `Containerfile` uses a **multi-stage build**:
 
 1. **Builder stage (`kmod-builder`)** — Installs akmods toolchain and akmod-nvidia source, then builds and signs the NVIDIA kernel module RPM using `akmodsbuild`. The signing keys are injected via BuildKit secret mounts and never persist in any image layer.
 
@@ -33,14 +62,27 @@ This approach is needed because `akmods` refuses to run as root (which is how co
 
 See `silverblue-custom-image-plan.md` for the full technical writeup.
 
+### Bazzite variant
+
+`Containerfile.bazzite` is a single-stage build with no secrets dependency — Bazzite already ships everything NVIDIA-related.
+
 ## Usage
 
-### Rebase a Fresh Silverblue Install
+### Rebase a Fresh Silverblue Install (Silverblue variant)
 
 ```bash
 rpm-ostree rebase ostree-unverified-registry:ghcr.io/maciej-makowski/silverblue-44-xps15:latest
 systemctl reboot
 ```
+
+### Rebase to the Bazzite variant
+
+```bash
+rpm-ostree rebase ostree-unverified-registry:ghcr.io/maciej-makowski/silverblue-44-xps15:bazzite-latest
+systemctl reboot
+```
+
+See [REBASE-GUIDE.md](REBASE-GUIDE.md) for caveats when moving between variants and for full rollback procedure.
 
 ### Rollback to Stock Silverblue
 
@@ -51,7 +93,7 @@ systemctl reboot
 
 ## Building Locally
 
-Requires the akmods signing keys accessible on the host:
+### Silverblue variant (requires signing keys)
 
 ```bash
 podman build \
@@ -74,13 +116,23 @@ podman --remote build \
   -t silverblue-44-xps15:latest .
 ```
 
+### Bazzite variant (no secrets needed)
+
+```bash
+podman --remote build -f Containerfile.bazzite -t silverblue-44-xps15:bazzite-latest .
+```
+
 ## CI
 
-GitHub Actions rebuilds the image weekly (Sunday 05:00 UTC) and on every push to `main`, then pushes to `ghcr.io/maciej-makowski/silverblue-44-xps15:latest` and a date-tagged version (e.g. `:2026-04-06`). The 4 most recent versions are kept; older ones are automatically deleted. Pull requests trigger a build (without push) to validate changes.
+GitHub Actions builds both variants via a single matrix job in `.github/workflows/build.yml` on every push to `main`, every PR, and on `workflow_dispatch`. PR builds do not push.
 
-Signing keys are stored as GitHub secrets (`AKMODS_PUBKEY`, `AKMODS_PRIVKEY`), base64-encoded.
+A daily-scheduled workflow (`.github/workflows/check-upstream.yml`, 05:00 UTC) polls the digests of both base images (`quay.io/fedora/fedora-silverblue:44` and `ghcr.io/ublue-os/bazzite-gnome-nvidia:stable`); if either has changed since the last poll, it triggers `build.yml` to rebuild both variants. Each variant keeps its 4 newest published versions (`:latest` + `:YYYY-MM-DD` plus a couple of older date tags); older ones are deleted automatically.
+
+Silverblue-variant signing keys are stored as GitHub secrets (`AKMODS_PUBKEY`, `AKMODS_PRIVKEY`), base64-encoded. The Bazzite variant uses no secrets.
 
 ## Signing Key Management
+
+(Silverblue variant only — Bazzite uses Universal Blue's signed modules.)
 
 The NVIDIA kernel modules must be signed for Secure Boot. Keys are generated on the target machine and enrolled in UEFI via `mokutil`.
 

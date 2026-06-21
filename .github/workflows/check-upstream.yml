@@ -10,29 +10,38 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       actions: write
+    strategy:
+      # Run both checks; one triggering a rebuild does not cancel the other.
+      fail-fast: false
+      matrix:
+        include:
+          - name: silverblue-base
+            image: quay.io/fedora/fedora-silverblue:44
+          - name: bazzite-base
+            image: ghcr.io/ublue-os/bazzite-gnome-nvidia:stable
     steps:
       - name: Get upstream digest
         id: upstream
         run: |
-          DIGEST=$(skopeo inspect docker://quay.io/fedora/fedora-silverblue:44 --format '{{.Digest}}')
+          DIGEST=$(skopeo inspect docker://${{ matrix.image }} --format '{{.Digest}}')
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
-          echo "Upstream digest: $DIGEST"
+          echo "Upstream ${{ matrix.name }} digest: $DIGEST"
 
       - name: Restore cached digest
         id: cache
         uses: actions/cache/restore@v5
         with:
           path: /tmp/upstream-digest.txt
-          key: upstream-digest-${{ steps.upstream.outputs.digest }}
+          key: upstream-digest-${{ matrix.name }}-${{ steps.upstream.outputs.digest }}
 
       - name: Check if rebuild needed
         id: check
         run: |
           if [ "${{ steps.cache.outputs.cache-hit }}" == "true" ]; then
-            echo "Upstream unchanged, skipping rebuild"
+            echo "Upstream ${{ matrix.name }} unchanged, skipping rebuild"
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Upstream changed, triggering rebuild"
+            echo "Upstream ${{ matrix.name }} changed, triggering rebuild"
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -52,4 +61,4 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: /tmp/upstream-digest.txt
-          key: upstream-digest-${{ steps.upstream.outputs.digest }}
+          key: upstream-digest-${{ matrix.name }}-${{ steps.upstream.outputs.digest }}

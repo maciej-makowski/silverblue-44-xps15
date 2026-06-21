@@ -105,3 +105,42 @@ sudo ostree admin pin --unpin 1
 ```
 
 (Use `rpm-ostree status` to check which index the pinned deployment is at — it may be `1` or `2` depending on how many deployments exist.)
+
+## Rebasing to the Bazzite variant
+
+Bazzite uses a different base image and a tuned kernel, so it is not just "more packages" on top of Silverblue. Treat the rebase the same way you treated the initial Silverblue rebase: pin the current deployment first, then rebase, then verify.
+
+```bash
+sudo ostree admin pin 0
+rpm-ostree rebase ostree-unverified-registry:ghcr.io/maciej-makowski/silverblue-44-xps15:bazzite-latest
+systemctl reboot
+```
+
+If you were previously on the Silverblue variant and have anything layered locally that the Bazzite variant already provides (e.g. RPM Fusion packages, nvidia-container-toolkit, custom akmod packages), uninstall them before or during the rebase:
+
+```bash
+rpm-ostree rebase ostree-unverified-registry:ghcr.io/maciej-makowski/silverblue-44-xps15:bazzite-latest \
+    --uninstall=rpmfusion-free-release \
+    --uninstall=rpmfusion-nonfree-release \
+    --uninstall=nvidia-container-toolkit
+systemctl reboot
+```
+
+### Verify after rebase
+
+```bash
+rpm-ostree status      # origin should show :bazzite-latest
+nvidia-smi             # GPU should be visible
+ujust --list           # Bazzite's ujust shortcuts should be available
+```
+
+If `nvidia-smi` fails, check `dmesg | grep nvidia` for module load errors. Bazzite's modules are signed by Universal Blue's key, which Secure Boot does NOT trust by default; you may need to disable Secure Boot or enroll the ublue key in MOK.
+
+## Switching back to the Silverblue variant
+
+```bash
+rpm-ostree rebase ostree-unverified-registry:ghcr.io/maciej-makowski/silverblue-44-xps15:latest
+systemctl reboot
+```
+
+The same caveats about removing variant-specific layered packages apply in reverse.
