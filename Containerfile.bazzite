@@ -28,6 +28,7 @@ FROM ghcr.io/ublue-os/bazzite-gnome-nvidia:stable
 RUN rpm-ostree install --idempotent \
         age \
         bats \
+        gamemode \
         gnome-shell-extension-appindicator \
         gnome-shell-extension-gsconnect \
         gnome-tweaks \
@@ -37,6 +38,7 @@ RUN rpm-ostree install --idempotent \
         rclone \
         restic \
         shfmt \
+        steam-devices \
         stow \
         tmux \
         toolbox \
