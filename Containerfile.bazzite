@@ -27,6 +27,7 @@ FROM ghcr.io/ublue-os/bazzite-gnome-nvidia:stable
 # already include. `--idempotent` so any future Bazzite-base overlap is a no-op.
 RUN rpm-ostree install --idempotent \
         age \
+        autossh \
         bats \
         gamemode \
         gnome-shell-extension-appindicator \
